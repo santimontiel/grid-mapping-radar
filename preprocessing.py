@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import seaborn as sns
 
+from scipy.spatial import ConvexHull
 from radar_scenes.sequence import Sequence
 
 def group_timestamps_by_time(timestamps: List[int], time_ms: int) -> List[int]:
@@ -36,7 +37,42 @@ def group_timestamps_by_time(timestamps: List[int], time_ms: int) -> List[int]:
         if idx == len(timestamps) - 1:
             frames.append(timestamps_in_frame)
 
+    # Remove last frame if it is empty.
+    if len(frames[-1]) == 0:
+        frames.pop()
+
     return frames
+
+category_sem_map = {
+    0: "Car",                   # Car
+    1: "Large vehicle",         # Large vehicle
+    2: "Large vehicle",         # Truck
+    3: "Large vehicle",         # Bus
+    4: "Large vehicle",         # Train
+    5: "Two wheeler",           # Bycicle
+    6: "Two wheeler",           # Motorized two
+    7: "Pedestrian",            # Pedestrian
+    8: "Pedestrian group",      # Group of pedestrians
+    9: None,                    # Animal
+    10: None,                   # Other
+    11: "Static",               # Static
+}
+
+category_num_map = {
+    0: 0,       # Car
+    1: 1,       # Large vehicle
+    2: 1,       # Truck
+    3: 1,       # Bus
+    4: 1,       # Train
+    5: 2,       # Bycicle
+    6: 2,       # Motorized two
+    7: 3,       # Pedestrian
+    8: 4,       # Group of pedestrians
+    9: None,    # Animal
+    10: None,   # Other
+    11: 5,      # Static
+}
+
 
 def aggregated_point_cloud(frame: List[int], seq: Sequence) -> pd.DataFrame:
     """ From a list of timestamps that compose a frame, aggregate their point
@@ -93,6 +129,13 @@ def aggregated_point_cloud(frame: List[int], seq: Sequence) -> pd.DataFrame:
     x0 = x0_rot1 * np.cos(np.pi/2-yaw_compensation) - y0_rot1 * np.sin(np.pi/2-yaw_compensation)
     y0 = x0_rot1 * np.sin(np.pi/2-yaw_compensation) + y0_rot1 * np.cos(np.pi/2-yaw_compensation)
 
+    # Filter the point cloud.
+    # Remove points that are out of the image range.
+    point_cloud = point_cloud[(point_cloud["x_mod"] > -50) & (point_cloud["x_mod"] < 50)]
+    point_cloud = point_cloud[(point_cloud["y_mod"] > -25) & (point_cloud["y_mod"] < 75)]
+    # Remove the point whose label_id is 9 or 10.
+    point_cloud = point_cloud[(point_cloud["label_id"] != 9) & (point_cloud["label_id"] != 10)]
+
     return (point_cloud, last_image, x0, y0, x1, y1)
 
 def aggregated_camera_image(frame: List[int], seq: Sequence):
@@ -100,7 +143,10 @@ def aggregated_camera_image(frame: List[int], seq: Sequence):
     return last_scene.camera_image_name
 
 
-def plot_aggregated_point_cloud(point_cloud: pd.DataFrame, x0: float, y0: float, x1: float, y1: float):
+def plot_aggregated_point_cloud(
+    point_cloud: pd.DataFrame,
+    x0: float, y0: float, x1: float, y1: float,
+    plot_objects: bool = True,):
     """ Plot the aggregated point cloud.
     """
 
@@ -115,9 +161,9 @@ def plot_aggregated_point_cloud(point_cloud: pd.DataFrame, x0: float, y0: float,
     plt.scatter(
         point_cloud['x_mod'],
         point_cloud['y_mod'],
-        c=point_cloud['vr_compensated'],
+        c=point_cloud['label_id'],
         s=1.5,
-        cmap='hsv',
+        cmap="tab20",
     )
     plt.xlim(-50, 50)
     plt.ylim(-25, 75)
@@ -132,4 +178,47 @@ def plot_aggregated_point_cloud(point_cloud: pd.DataFrame, x0: float, y0: float,
     plt.hlines(y1, x1 - 1.5, x1 + 1.5, color='b', linestyles='dashed')
     plt.text(x1 + 0.5, y1 + 0.5, 'End point', color='b')
 
+    # Plot the objects.
+    if plot_objects:
+
+        # Extract the objects.
+        track_ids = point_cloud['track_id'].unique().tolist()
+        objects = [obj for obj in track_ids if len(obj) > 3]
+
+        for obj in objects:
+            obj_points = point_cloud[point_cloud['track_id'] == obj]
+            obj_x = obj_points['x_mod'].values
+            obj_y = obj_points['y_mod'].values
+            if len(obj_x) >= 3:
+                obj_ch = ConvexHull(list(zip(obj_x, obj_y)))
+
+                polygon = np.append(obj_ch.vertices, obj_ch.vertices[0])
+                plt.plot(obj_x[polygon], obj_y[polygon], 'r--', lw=0.5)
+                # plt.text(obj_x[polygon[0]], obj_y[polygon[0]], obj, color='r')
+                # Plot the categoy of the object.
+                plt.text(
+                    obj_x[polygon[0]] + 0.5,
+                    obj_y[polygon[0]] + 0.5,
+                    category_sem_map.get(obj_points['label_id'].values[0]),
+                    color='b'
+                )
+            else:
+                plt.plot(obj_x, obj_y, 'r--', lw=0.5)
+                # plt.text(obj_x[0], obj_y[0], obj, color='r')
+                plt.text(
+                    obj_x[0],
+                    obj_y[0],
+                    category_sem_map.get(obj_points['label_id'].values[0]),
+                    color='b'
+                )
+
+
     plt.show()
+
+def translate_categories(point_cloud: pd.DataFrame):
+    """ Add a new column to the DataFrame with a simplified category.
+    """
+    # Add a new column with the simplified category from 'label_id' column.
+    point_cloud['category'] = point_cloud['label_id'].map(category_num_map)
+    return point_cloud
+
