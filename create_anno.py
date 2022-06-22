@@ -1,5 +1,4 @@
 import os
-from tkinter import END
 from rich.progress import track
 
 from preprocessing import group_timestamps_by_time, aggregated_point_cloud, \
@@ -17,7 +16,7 @@ if not os.path.exists(PATH_TO_NEW_DATASET):
     os.makedirs(PATH_TO_NEW_DATASET)
 
 START_SEQ = 1
-END_SEQ = 10
+END_SEQ = 158
 
 for seq_number in range(START_SEQ, END_SEQ + 1):
 
@@ -99,7 +98,12 @@ for seq_number in range(START_SEQ, END_SEQ + 1):
                 xc_yolo = (x1_cell + x0_cell) / 2 / N_CELLS
                 yc_yolo = (y1_cell + y0_cell) / 2 / N_CELLS
                 w_yolo = (x1_cell - x0_cell) / N_CELLS
+                if w_yolo < 1/640:
+                    w_yolo = 0.0016
                 h_yolo = - (y1_cell - y0_cell) / N_CELLS
+                if h_yolo < 1/640:
+                    h_yolo = 0.0016
+
                 # print(f"Bounding box in YOLO format: {xc_yolo}, {yc_yolo}, {w_yolo}, {h_yolo}")
 
                 # Write the annotation.
