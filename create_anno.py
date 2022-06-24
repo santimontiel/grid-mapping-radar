@@ -3,7 +3,8 @@ from rich.progress import track
 
 from preprocessing import group_timestamps_by_time, aggregated_point_cloud, \
     category_num_map, category_sem_map
-from radar_scenes.sequence import Sequence
+from radar_scenes.sequence import Sequence, get_training_sequences, \
+    get_validation_sequences
 
 # Load RadarScenes dataset.
 PATH_TO_DATASET = "/home/robesafe/Datasets/RadarScenes"
@@ -11,19 +12,24 @@ if not os.path.exists(PATH_TO_DATASET):
     raise FileNotFoundError("Dataset not found at {}".format(PATH_TO_DATASET))
 
 # Set the path to the new dataset.
-PATH_TO_NEW_DATASET = "/home/robesafe/Datasets/RadarScenes_BEV"
+PATH_TO_NEW_DATASET = "/home/robesafe/Santi/radarscenes_bev_yolo_v2"
 if not os.path.exists(PATH_TO_NEW_DATASET):
     os.makedirs(PATH_TO_NEW_DATASET)
+os.makedirs(os.path.join(PATH_TO_NEW_DATASET, "labels", "train"))
+os.makedirs(os.path.join(PATH_TO_NEW_DATASET, "labels", "val"))
 
-START_SEQ = 1
-END_SEQ = 158
+# Get the training sequences.
+training_sequences = get_training_sequences(os.path.join(PATH_TO_DATASET, "data", "sequences.json"))
+validation_sequences = get_validation_sequences(os.path.join(PATH_TO_DATASET, "data", "sequences.json"))
+
+# Number of sequences
+START_SEQ, END_SEQ = 1, 158
 
 for seq_number in range(START_SEQ, END_SEQ + 1):
 
     print(f"Processing sequence {seq_number}/{END_SEQ}.")
 
-    # Load the first sequence.
-    # seq_number = 1
+    # Load the sequence.
     seq_filename = os.path.join(PATH_TO_DATASET, "data", f"sequence_{seq_number}", "scenes.json")
     sequence = Sequence.from_json(seq_filename)
 
@@ -31,16 +37,15 @@ for seq_number in range(START_SEQ, END_SEQ + 1):
     timestamps = sequence.timestamps
     frames = group_timestamps_by_time(timestamps, 500)
 
-    i = 0
     # Aggregate the point clouds.
+    i = 0
     for frame in track(frames, description="Frame loop..."):
         
         i += 1
-        # print(f"{'*' * 20} Frame {i} {'*' * 20}\n")
 
         apc = aggregated_point_cloud(frame, sequence)
         point_cloud = apc[0]
-        # print(point_cloud)
+
 
         # Filter the point cloud.
         # Remove points that are out of the image range.
@@ -48,23 +53,32 @@ for seq_number in range(START_SEQ, END_SEQ + 1):
         point_cloud = point_cloud[(point_cloud["y_mod"] > -25) & (point_cloud["y_mod"] < 75)]
         # Remove the point whose label_id is 9 or 10.
         point_cloud = point_cloud[(point_cloud["label_id"] != 9) & (point_cloud["label_id"] != 10)]
-        # print(point_cloud)
 
         # Extract the objects.
         track_ids = point_cloud['track_id'].unique().tolist()
         objects = [obj for obj in track_ids if len(obj) > 3]
         # print(objects, "\n")
 
-        # If the folder for the sequence does not exist, create it.
-        if not os.path.exists(os.path.join(PATH_TO_NEW_DATASET, f"sequence_{seq_number}")):
-            os.makedirs(os.path.join(PATH_TO_NEW_DATASET, f"sequence_{seq_number}"))
+        # # If the folder for the sequence does not exist, create it.
+        # if not os.path.exists(os.path.join(PATH_TO_NEW_DATASET, f"sequence_{seq_number}")):
+        #     os.makedirs(os.path.join(PATH_TO_NEW_DATASET, f"sequence_{seq_number}"))
 
         # Open the annotation file and write the objects.
-        anno_filename = os.path.join(
-            PATH_TO_NEW_DATASET,
-            f"sequence_{seq_number}",
-            f"frame_{i:03d}.txt"
-        )
+        if f"sequence_{seq_number}" in training_sequences:      # Training set
+            anno_filename = os.path.join(
+                PATH_TO_NEW_DATASET,
+                f"labels",
+                f"train",
+                f"frame_{seq_number:03d}_{i:03d}.txt"
+            )
+        else:                                                   # Validation set
+            anno_filename = os.path.join(
+                PATH_TO_NEW_DATASET,
+                f"labels",
+                f"val",
+                f"frame_{seq_number:03d}_{i:03d}.txt"
+            )
+
 
         with open(anno_filename, "w") as f:
 
@@ -98,11 +112,11 @@ for seq_number in range(START_SEQ, END_SEQ + 1):
                 xc_yolo = (x1_cell + x0_cell) / 2 / N_CELLS
                 yc_yolo = (y1_cell + y0_cell) / 2 / N_CELLS
                 w_yolo = (x1_cell - x0_cell) / N_CELLS
-                if w_yolo < 1/640:
-                    w_yolo = 0.0016
+                if w_yolo < 3/640:
+                    w_yolo = 0.01
                 h_yolo = - (y1_cell - y0_cell) / N_CELLS
-                if h_yolo < 1/640:
-                    h_yolo = 0.0016
+                if h_yolo < 3/640:
+                    h_yolo = 0.01
 
                 # print(f"Bounding box in YOLO format: {xc_yolo}, {yc_yolo}, {w_yolo}, {h_yolo}")
 
@@ -112,4 +126,3 @@ for seq_number in range(START_SEQ, END_SEQ + 1):
         # Close and save the file
         f.close()
         # print(f"Saved annotation file for frame {i} to {anno_filename}")
-
