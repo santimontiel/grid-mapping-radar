@@ -32,7 +32,7 @@ if not os.path.exists(PATH_TO_DATASET):
     raise FileNotFoundError("Dataset not found at {}".format(PATH_TO_DATASET))
 
 # Set the path to the new dataset.
-PATH_TO_NEW_DATASET = "/home/robesafe/Santi/radarscenes_bev_yolo_v2"
+PATH_TO_NEW_DATASET = "/home/robesafe/Santi/radarscenes_bev_yolo_v4"
 if not os.path.exists(PATH_TO_NEW_DATASET):
     os.makedirs(PATH_TO_NEW_DATASET)
 os.makedirs(os.path.join(PATH_TO_NEW_DATASET, "images", "train"))
@@ -78,8 +78,11 @@ for seq_number in range(START_SEQ, END_SEQ + 1):
         # print(point_cloud)
 
         # Feature scaling
-        point_cloud["rcs_feat"] = point_cloud.apply(lambda x: rcs_scale(x['rcs']), axis=1)
-        point_cloud["vr_feat"] = point_cloud.apply(lambda x: vr_scale(x['vr_compensated']), axis=1)
+        try:
+            point_cloud["rcs_feat"] = point_cloud.apply(lambda x: rcs_scale(x['rcs']), axis=1)
+            point_cloud["vr_feat"] = point_cloud.apply(lambda x: vr_scale(x['vr_compensated']), axis=1)
+        except ValueError:  # This happens when DataFrame is empty (1 case in the dataset -> sequence 154)
+            continue        # just skip that frame
 
         # Extract the objects.
         track_ids = point_cloud['track_id'].unique().tolist()
@@ -115,10 +118,10 @@ for seq_number in range(START_SEQ, END_SEQ + 1):
 
         KERNEL_SIZE = (7, 7)
         img_wo_blur = grid[:,:,0:3]
-        img_blur = cv.GaussianBlur(img_wo_blur, KERNEL_SIZE, 0)
+        # img_blur = cv.GaussianBlur(img_wo_blur, KERNEL_SIZE, 0)
 
         # Multiply channels by 255 to get them in the range [0, 255].
-        img_blur = img_blur * 255
+        img_wo_blur = img_wo_blur * 255
 
         # Save the image
         if f"sequence_{seq_number}" in training_sequences:      # Training set
@@ -135,4 +138,4 @@ for seq_number in range(START_SEQ, END_SEQ + 1):
                 f"val",
                 f"frame_{seq_number:03d}_{i:03d}.png"
             )
-        cv.imwrite(data_filename, img_blur)
+        cv.imwrite(data_filename, img_wo_blur)

@@ -12,7 +12,7 @@ if not os.path.exists(PATH_TO_DATASET):
     raise FileNotFoundError("Dataset not found at {}".format(PATH_TO_DATASET))
 
 # Set the path to the new dataset.
-PATH_TO_NEW_DATASET = "/home/robesafe/Santi/radarscenes_bev_yolo_v2"
+PATH_TO_NEW_DATASET = "/home/robesafe/Santi/radarscenes_bev_yolo_v4"
 if not os.path.exists(PATH_TO_NEW_DATASET):
     os.makedirs(PATH_TO_NEW_DATASET)
 os.makedirs(os.path.join(PATH_TO_NEW_DATASET, "labels", "train"))
