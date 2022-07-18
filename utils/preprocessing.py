@@ -136,6 +136,9 @@ def aggregated_point_cloud(frame: List[int], seq: Sequence) -> pd.DataFrame:
     # Remove the point whose label_id is 9 or 10.
     point_cloud = point_cloud[(point_cloud["label_id"] != 9) & (point_cloud["label_id"] != 10)]
 
+    # Delete auxiliary columns (optimize memory usage).
+    point_cloud = point_cloud.drop(columns=['x_tr', 'y_tr', 'x_aggr', 'y_aggr'])
+
     return (point_cloud, last_image, x0, y0, x1, y1)
 
 def aggregated_camera_image(frame: List[int], seq: Sequence):
